@@ -17,4 +17,4 @@ Repository = "https://github.com/ThinkingBells/comfyui_venice_api_v3"
 [tool.comfy]
 PublisherId = "thinkingbells"
 DisplayName = "LLM Venice chat V.3"
-Icon = ""
+Icon = "https://raw.githubusercontent.com/ThinkingBells/comfyui_venice_api_v3/main/gh_assets/logo.png"
