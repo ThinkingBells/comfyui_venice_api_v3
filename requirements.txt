@@ -5,3 +5,5 @@ configparser>=5.3.0
 torchaudio
 torchvision
 imageio-ffmpeg
+ecdsa>=0.18.0
+cryptography>=41.0.0

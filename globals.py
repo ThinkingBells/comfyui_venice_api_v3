@@ -12,7 +12,10 @@ API_ENDPOINTS = {
     "video_quote": "/video/quote",  # price estimate, takes same payload as video_queue
     "video_retrieve": "/video/retrieve",  # get video file by job id
     "list_api_keys": "/api_keys",
+    "tee_attestation": "/tee/attestation",
 }
+
+REQUEST_TIMEOUT = 300  # seconds; increase for slow/reasoning models
 
 VENICEAI_BASE_URL = "https://api.venice.ai/api/v1"
 
