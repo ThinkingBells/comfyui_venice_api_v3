@@ -24,7 +24,7 @@ class GenerateText(io.ComfyNode):
 
         return io.Schema(
             node_id="GenerateText_VENICE",
-            display_name="Generate Text (Venice)",
+            display_name="LLM Venice chat V.3",
             category="venice.ai",
             inputs=[
                 io.Combo.Input(
