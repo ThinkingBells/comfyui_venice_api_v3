@@ -1,5 +1,7 @@
 # comfyui_venice_api_v3
 
+![LLM Venice chat V.3 node](gh_assets/node_screenshot.png)
+
 A [ComfyUI](https://github.com/comfyanonymous/ComfyUI) custom node for text generation using the [Venice.ai](https://venice.ai) API, built on the ComfyUI v3 node schema.
 
 ## Features
