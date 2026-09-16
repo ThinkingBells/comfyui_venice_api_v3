@@ -44,7 +44,11 @@ A [ComfyUI](https://github.com/comfyanonymous/ComfyUI) custom node for text gene
    pip install -r comfyui_venice_api_v3/requirements.txt
    ```
 
-3. Set your Venice API key via the **VeniceAI settings** panel inside ComfyUI (or edit `veniceai_config.json` in the node folder directly).
+3. Set your Venice API key:
+   - Open ComfyUI and go to **Settings** (⚙️ gear icon, top right)
+   - Find the **VeniceAI → API Key** section
+   - Paste your key — it is saved automatically
+   - Your API key can be obtained at [venice.ai](https://venice.ai) → Account → API Keys
 
 4. Restart ComfyUI. The node appears under the **venice.ai** category as **LLM Venice chat V.3**.
 
