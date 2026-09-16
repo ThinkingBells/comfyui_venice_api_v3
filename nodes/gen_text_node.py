@@ -47,7 +47,7 @@ class GenerateText(io.ComfyNode):
                 ),
                 io.Float.Input(
                     "temperature",
-                    default=0.5,
+                    default=0.2,
                     min=0.0,
                     max=2.0,
                     step=0.05,
@@ -55,7 +55,7 @@ class GenerateText(io.ComfyNode):
                 ),
                 io.Float.Input(
                     "top_p",
-                    default=0.9,
+                    default=1.0,
                     min=0.0,
                     max=1.0,
                     step=0.01,
@@ -63,7 +63,7 @@ class GenerateText(io.ComfyNode):
                 ),
                 io.Int.Input(
                     "max_completion_tokens",
-                    default=3000,
+                    default=6000,
                     min=1,
                     max=131072,
                     tooltip=(
@@ -88,7 +88,7 @@ class GenerateText(io.ComfyNode):
                 ),
                 io.Boolean.Input(
                     "strip_thinking",
-                    default=False,
+                    default=True,
                     tooltip=(
                         "Strip thinking/reasoning blocks from the response "
                         "(venice_parameters.strip_thinking_response). "
@@ -97,7 +97,7 @@ class GenerateText(io.ComfyNode):
                 ),
                 io.Boolean.Input(
                     "include_venice_system_prompt",
-                    default=True,
+                    default=False,
                     tooltip="Allow Venice to inject its own system prompt alongside yours.",
                 ),
                 io.Boolean.Input(
