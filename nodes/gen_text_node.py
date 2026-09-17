@@ -240,6 +240,8 @@ class GenerateText(io.ComfyNode):
     @classmethod
     def _consume_e2ee_stream(cls, response: requests.Response, client_sk) -> str:
         parts = []
+        any_decrypted = False
+        any_plaintext = False
         for line in response.iter_lines(decode_unicode=True):
             if not line or not line.startswith("data: "):
                 continue
@@ -256,7 +258,20 @@ class GenerateText(io.ComfyNode):
             delta = choices[0].get("delta", {})
             raw = delta.get("content") or ""
             if raw:
-                text = (decrypt_chunk(raw, client_sk) if is_encrypted_chunk(raw) else raw) or ""
+                if is_encrypted_chunk(raw):
+                    text = decrypt_chunk(raw, client_sk) or ""
+                    any_decrypted = True
+                else:
+                    text = raw
+                    any_plaintext = True
                 if text:
                     parts.append(text)
-        return "".join(parts)
+        result = "".join(parts)
+        if any_plaintext and not any_decrypted:
+            return (
+                "[E2EE Warning] The server did not encrypt the response — "
+                "this model does not fully support E2EE. "
+                "Your prompt was sent encrypted but the reply arrived in plaintext.\n\n"
+                + result
+            )
+        return result
