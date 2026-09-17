@@ -67,9 +67,14 @@ def generate_keypair():
 
 def fetch_server_pubkey(base_url, model, api_key, timeout=30):
     """
-    Call GET /tee/attestation to retrieve the model's TEE public key.
+    Call GET /tee/attestation and return the model's TEE public key after
+    verifying the attestation response.
 
-    Returns the 130-char hex uncompressed public key (`signing_key` field).
+    Checks (all abort the request on failure):
+      - Nonce in response matches the nonce sent.
+      - debug_mode is False (real TEE, not a simulator).
+
+    Returns the 130-char hex uncompressed public key.
     """
     nonce = secrets.token_hex(32)  # 64 hex chars = 32 bytes
     url = f"{base_url}/tee/attestation"
@@ -78,13 +83,28 @@ def fetch_server_pubkey(base_url, model, api_key, timeout=30):
     resp = requests.get(url, headers=headers, params=params, timeout=timeout)
     resp.raise_for_status()
     data = resp.json()
-    # Field name varies by API version: try both known names
-    key_hex = (
-        data.get("signing_public_key")
-        or data.get("signing_key")
-        or data.get("data", {}).get("signing_public_key", "")
-        or data.get("data", {}).get("signing_key", "")
-    )
+
+    # Normalise: Venice returns fields either at top level or nested under "data"
+    root = data.get("data") if isinstance(data.get("data"), dict) else data
+
+    # 1. Nonce verification — guards against replayed or stale attestations
+    returned_nonce = root.get("nonce", "")
+    if returned_nonce != nonce:
+        raise ValueError(
+            f"E2EE attestation nonce mismatch: sent {nonce!r}, got {returned_nonce!r}. "
+            "Aborting — the response may be replayed or tampered."
+        )
+
+    # 2. Debug mode check — a debug TEE provides no real confidentiality guarantee
+    debug_mode = root.get("debug_mode")
+    if debug_mode is not False:
+        raise ValueError(
+            f"E2EE attestation rejected: debug_mode={debug_mode!r}. "
+            "The TEE is not running in production mode — aborting."
+        )
+
+    # 3. Extract public key (field name varies by API version)
+    key_hex = root.get("signing_public_key") or root.get("signing_key") or ""
     if not key_hex or len(key_hex) != 130:
         raise ValueError(
             f"E2EE attestation returned unexpected signing_key: {key_hex!r}\n"
