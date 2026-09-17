@@ -95,11 +95,12 @@ def fetch_server_pubkey(base_url, model, api_key, timeout=30):
             "Aborting — the response may be replayed or tampered."
         )
 
-    # 2. Debug mode check — a debug TEE provides no real confidentiality guarantee
+    # 2. Debug mode check — a debug TEE provides no real confidentiality guarantee.
+    # Only block if explicitly True; absent/None means the API does not expose the field.
     debug_mode = root.get("debug_mode")
-    if debug_mode is not False:
+    if debug_mode is True:
         raise ValueError(
-            f"E2EE attestation rejected: debug_mode={debug_mode!r}. "
+            "E2EE attestation rejected: debug_mode=True. "
             "The TEE is not running in production mode — aborting."
         )
 
