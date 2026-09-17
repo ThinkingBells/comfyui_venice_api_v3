@@ -63,7 +63,18 @@ A [ComfyUI](https://github.com/comfyanonymous/ComfyUI) custom node for text gene
 
 Select any model whose ID starts with `e2ee-` (e.g. `e2ee-qwen-2-5-7b-p`) — E2EE is enabled automatically. You can also force it on any model by toggling `use_e2ee = true`.
 
-If the Venice TEE server returns an error (e.g. 502 for some models), it is returned as text in the `response` output instead of crashing the workflow.
+For each request the node:
+1. Generates a fresh secp256k1 keypair (never reused).
+2. Fetches the TEE attestation from Venice (`/tee/attestation`) with a random nonce.
+3. Verifies the nonce in the response matches and that `debug_mode` is not `true`.
+4. Encrypts all messages (system + user) with ECDH → HKDF-SHA256 → AES-256-GCM.
+5. Sends `X-Venice-TEE-Client-Pub-Key`, `X-Venice-TEE-Model-Pub-Key` and `X-Venice-TEE-Signing-Algo: ecdsa` headers.
+6. Decrypts the streaming response chunk by chunk using the per-chunk ephemeral server key.
+
+**Error messages:**
+- `[E2EE Error] Model '...' does not support E2EE/TEE attestation` — the selected model has no TEE support; disable `use_e2ee` or select an `e2ee-*` model.
+- `[E2EE Warning] The server did not encrypt the response` — the model accepted the attestation but returned the reply in plaintext; E2EE is not fully supported by that specific model.
+- `[E2EE Error] E2EE attestation nonce mismatch` — the attestation response may be replayed or tampered; the request was aborted.
 
 ## Credits
 
