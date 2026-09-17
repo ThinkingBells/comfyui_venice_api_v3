@@ -81,7 +81,15 @@ def fetch_server_pubkey(base_url, model, api_key, timeout=30):
     headers = {"Authorization": f"Bearer {api_key}"}
     params = {"model": model, "nonce": nonce}
     resp = requests.get(url, headers=headers, params=params, timeout=timeout)
-    resp.raise_for_status()
+    try:
+        resp.raise_for_status()
+    except requests.exceptions.HTTPError as exc:
+        if resp.status_code == 400:
+            raise ValueError(
+                f"Model '{model}' does not support E2EE/TEE attestation. "
+                "Disable use_e2ee or select an e2ee-* model."
+            ) from exc
+        raise
     data = resp.json()
 
     # Normalise: Venice returns fields either at top level or nested under "data"
