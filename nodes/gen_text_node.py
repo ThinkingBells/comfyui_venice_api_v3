@@ -17,9 +17,15 @@ logger = logging.getLogger(__name__)
 
 
 class GenerateText(io.ComfyNode):
+    _FALLBACK_MODELS = [
+        "llama-3.3-70b", "llama-3.1-405b", "mistral-31-24b",
+        "qwen-2-5-vl-72b-instruct", "e2ee-qwen-2-5-7b-p", "e2ee-glm-5-2-p",
+    ]
+
     @classmethod
     def define_schema(cls) -> io.Schema:
-        models = list(text_model_choices()) or ["llama-3.3-70b"]
+        fetched = list(text_model_choices())
+        models = fetched if fetched and not fetched[0].startswith("This list") else cls._FALLBACK_MODELS
         default_model = "llama-3.3-70b" if "llama-3.3-70b" in models else models[0]
 
         return io.Schema(
