@@ -6,8 +6,6 @@ from .nodes.gen_text_node import GenerateText
 
 
 class VeniceExtension(ComfyExtension):
-    name = "comfyui_venice_api_v3"
-
     async def get_node_list(self) -> list[type[io.ComfyNode]]:
         return [
             GenerateText,
