@@ -63,7 +63,7 @@ class GenerateText(io.ComfyNode):
                 ),
                 io.Int.Input(
                     "max_completion_tokens",
-                    default=6000,
+                    default=3000,
                     min=1,
                     max=131072,
                     tooltip=(
