@@ -2,10 +2,24 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
+import time
 from typing import Any, Dict
 
 import requests
 from comfy_api.latest import io
+
+try:
+    import comfy.model_management as _cmm
+    _HAS_INTERRUPT = True
+except ImportError:
+    _cmm = None
+    _HAS_INTERRUPT = False
+
+
+def _check_interrupt():
+    if _HAS_INTERRUPT:
+        _cmm.throw_exception_if_processing_interrupted()
 
 from ..e2ee import decrypt_chunk, is_encrypted_chunk, setup_e2ee_request
 from ..globals import API_ENDPOINTS, REQUEST_TIMEOUT, VENICEAI_BASE_URL
@@ -206,43 +220,91 @@ class GenerateText(io.ComfyNode):
             payload["stream"] = True
             headers.update(e2ee_headers)
 
+        session = requests.Session()
         try:
-            response = requests.post(
-                url,
-                json=payload,
-                headers=headers,
-                timeout=REQUEST_TIMEOUT,
-                stream=needs_e2ee,
-            )
-        except requests.exceptions.Timeout:
-            return io.NodeOutput(
-                f"[Error] Request timed out after {REQUEST_TIMEOUT}s. "
-                "Reasoning models can take several minutes; try reducing max_completion_tokens."
-            )
-        except requests.exceptions.RequestException as exc:
-            return io.NodeOutput(f"[Error] API request failed: {exc}")
+            if needs_e2ee:
+                # stream=True → post returns quickly (just headers); chunks read below
+                try:
+                    response = session.post(
+                        url, json=payload, headers=headers,
+                        timeout=REQUEST_TIMEOUT, stream=True,
+                    )
+                except requests.exceptions.Timeout:
+                    return io.NodeOutput(
+                        f"[Error] Request timed out after {REQUEST_TIMEOUT}s. "
+                        "Try reducing max_completion_tokens or use a different e2ee-* model."
+                    )
+                except requests.exceptions.RequestException as exc:
+                    return io.NodeOutput(f"[Error] API request failed: {exc}")
 
-        if response.status_code != 200:
-            return io.NodeOutput(f"[Error] HTTP {response.status_code}: {response.text[:500]}")
+                if response.status_code != 200:
+                    return io.NodeOutput(f"[Error] HTTP {response.status_code}: {response.text[:500]}")
 
-        if needs_e2ee:
-            content = cls._consume_e2ee_stream(response, client_sk)
-        else:
-            try:
-                json_response = response.json()
-                message = json_response["choices"][0]["message"]
-                content = message.get("content") or message.get("reasoning_content") or ""
-            except (KeyError, IndexError, TypeError) as exc:
-                return io.NodeOutput(f"[Error] Unexpected API response: {exc}")
+                content = cls._consume_e2ee_stream(response, client_sk, session)
+            else:
+                # Blocking POST — run in a thread so the user can cancel via the
+                # ComfyUI interrupt button; on cancel we close the session to abort
+                # the TCP connection immediately.
+                result: Dict[str, Any] = {"response": None, "exc": None}
+
+                def _do_post():
+                    try:
+                        result["response"] = session.post(
+                            url, json=payload, headers=headers,
+                            timeout=REQUEST_TIMEOUT,
+                        )
+                    except Exception as exc:
+                        result["exc"] = exc
+
+                t = threading.Thread(target=_do_post, daemon=True)
+                t.start()
+                while t.is_alive():
+                    try:
+                        _check_interrupt()
+                    except Exception:
+                        session.close()
+                        t.join(timeout=2)
+                        return io.NodeOutput("[Interrupted] Request cancelled.")
+                    time.sleep(0.1)
+
+                exc = result["exc"]
+                if exc is not None:
+                    if isinstance(exc, requests.exceptions.Timeout):
+                        return io.NodeOutput(
+                            f"[Error] Request timed out after {REQUEST_TIMEOUT}s. "
+                            "Reasoning models can take several minutes; try reducing max_completion_tokens."
+                        )
+                    return io.NodeOutput(f"[Error] API request failed: {exc}")
+
+                response = result["response"]
+                if response.status_code != 200:
+                    return io.NodeOutput(f"[Error] HTTP {response.status_code}: {response.text[:500]}")
+
+                try:
+                    json_response = response.json()
+                    message = json_response["choices"][0]["message"]
+                    content = message.get("content") or message.get("reasoning_content") or ""
+                except (KeyError, IndexError, TypeError) as exc:
+                    return io.NodeOutput(f"[Error] Unexpected API response: {exc}")
+        finally:
+            session.close()
 
         return io.NodeOutput(content)
 
     @classmethod
-    def _consume_e2ee_stream(cls, response: requests.Response, client_sk) -> str:
+    def _consume_e2ee_stream(
+        cls, response: requests.Response, client_sk, session: requests.Session | None = None
+    ) -> str:
         parts = []
         any_decrypted = False
         any_plaintext = False
         for line in response.iter_lines(decode_unicode=True):
+            try:
+                _check_interrupt()
+            except Exception:
+                if session:
+                    session.close()
+                return "[Interrupted] Request cancelled."
             if not line or not line.startswith("data: "):
                 continue
             data_str = line[len("data: "):]

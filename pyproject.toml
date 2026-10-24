@@ -1,7 +1,7 @@
 [project]
 name = "comfyui_venice_api_v3"
 description = "ComfyUI custom node for Venice.ai text generation with E2EE support (v3 schema)"
-version = "1.0.4"
+version = "1.0.5"
 license = { file = "LICENSE" }
 dependencies = [
     "requests>=2.31.0",
