@@ -24,7 +24,7 @@ A [ComfyUI](https://github.com/comfyanonymous/ComfyUI) custom node for text gene
 | prompt | String | — | User message |
 | temperature | Float | 0.20 | Sampling temperature |
 | top_p | Float | 1.00 | Nucleus sampling |
-| max_completion_tokens | Int | 6000 | Max tokens (includes reasoning) |
+| max_completion_tokens | Int | 3000 | Max tokens (includes reasoning) |
 | reasoning_effort | Combo | none | none / low / medium / high |
 | seed | Int | 1 | Seed (min 1, supports randomize) |
 | strip_thinking | Boolean | true | Strip reasoning blocks from output |
@@ -71,7 +71,19 @@ For each request the node:
 5. Sends `X-Venice-TEE-Client-Pub-Key`, `X-Venice-TEE-Model-Pub-Key` and `X-Venice-TEE-Signing-Algo: ecdsa` headers.
 6. Decrypts the streaming response chunk by chunk using the per-chunk ephemeral server key.
 
-**Error messages:**
+**Performance note — E2EE is slower than regular inference:**
+
+- TEE (Trusted Execution Environment) models run inside a secure hardware enclave. This adds significant overhead compared to a standard model call.
+- The first request after startup (or after the 1-hour attestation cache expires) fetches the TEE attestation certificate — this adds a few extra seconds before inference starts.
+- ComfyUI collects the full streaming response before showing the output, so the node appears to hang for the entire generation time. For long responses this can be **2–5 minutes** or more.
+- Keeping `max_completion_tokens` low (e.g. 1000–2000) gives noticeably faster responses.
+- If you need fast turnaround, use a non-`e2ee-*` model with `use_e2ee = false`.
+
+**Server errors you may see:**
+- `[Error] HTTP 504` — the TEE model did not start responding in time. The server was overloaded; wait a minute and retry, or try a different `e2ee-*` model.
+- `[Error] HTTP 429` — rate limit reached. Wait and retry.
+
+**E2EE-specific error messages:**
 - `[E2EE Error] Model '...' does not support E2EE/TEE attestation` — the selected model has no TEE support; disable `use_e2ee` or select an `e2ee-*` model.
 - `[E2EE Warning] The server did not encrypt the response` — the model accepted the attestation but returned the reply in plaintext; E2EE is not fully supported by that specific model.
 - `[E2EE Error] E2EE attestation nonce mismatch` — the attestation response may be replayed or tampered; the request was aborted.
