@@ -223,24 +223,47 @@ class GenerateText(io.ComfyNode):
         session = requests.Session()
         try:
             if needs_e2ee:
-                # stream=True → post returns quickly (just headers); chunks read below
-                try:
-                    response = session.post(
-                        url, json=payload, headers=headers,
-                        timeout=REQUEST_TIMEOUT, stream=True,
-                    )
-                except requests.exceptions.Timeout:
-                    return io.NodeOutput(
-                        f"[Error] Request timed out after {REQUEST_TIMEOUT}s. "
-                        "Try reducing max_completion_tokens or use a different e2ee-* model."
-                    )
-                except requests.exceptions.RequestException as exc:
+                # Run the entire E2EE request+stream in a background thread so
+                # the main thread can cancel immediately via session.close().
+                result: Dict[str, Any] = {"content": None, "exc": None, "http_error": None}
+
+                def _do_e2ee():
+                    try:
+                        resp = session.post(
+                            url, json=payload, headers=headers,
+                            timeout=REQUEST_TIMEOUT, stream=True,
+                        )
+                        if resp.status_code != 200:
+                            result["http_error"] = f"[Error] HTTP {resp.status_code}: {resp.text[:500]}"
+                            return
+                        result["content"] = cls._consume_e2ee_stream(resp, client_sk)
+                    except Exception as exc:
+                        result["exc"] = exc
+
+                t = threading.Thread(target=_do_e2ee, daemon=True)
+                t.start()
+                while t.is_alive():
+                    try:
+                        _check_interrupt()
+                    except Exception:
+                        session.close()
+                        t.join(timeout=2)
+                        return io.NodeOutput("[Interrupted] Request cancelled.")
+                    time.sleep(0.1)
+
+                if result["http_error"]:
+                    return io.NodeOutput(result["http_error"])
+                exc = result["exc"]
+                if exc is not None:
+                    if isinstance(exc, requests.exceptions.Timeout):
+                        return io.NodeOutput(
+                            f"[Error] Request timed out after {REQUEST_TIMEOUT}s. "
+                            "Try reducing max_completion_tokens or use a different e2ee-* model."
+                        )
+                    if isinstance(exc, (requests.exceptions.ConnectionError, requests.exceptions.ChunkedEncodingError)):
+                        return io.NodeOutput("[Interrupted] Request cancelled.")
                     return io.NodeOutput(f"[Error] API request failed: {exc}")
-
-                if response.status_code != 200:
-                    return io.NodeOutput(f"[Error] HTTP {response.status_code}: {response.text[:500]}")
-
-                content = cls._consume_e2ee_stream(response, client_sk, session)
+                content = result["content"] or ""
             else:
                 # Blocking POST — run in a thread so the user can cancel via the
                 # ComfyUI interrupt button; on cancel we close the session to abort
@@ -292,19 +315,11 @@ class GenerateText(io.ComfyNode):
         return io.NodeOutput(content)
 
     @classmethod
-    def _consume_e2ee_stream(
-        cls, response: requests.Response, client_sk, session: requests.Session | None = None
-    ) -> str:
+    def _consume_e2ee_stream(cls, response: requests.Response, client_sk) -> str:
         parts = []
         any_decrypted = False
         any_plaintext = False
         for line in response.iter_lines(decode_unicode=True):
-            try:
-                _check_interrupt()
-            except Exception:
-                if session:
-                    session.close()
-                return "[Interrupted] Request cancelled."
             if not line or not line.startswith("data: "):
                 continue
             data_str = line[len("data: "):]
