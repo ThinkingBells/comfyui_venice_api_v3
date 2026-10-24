@@ -10,8 +10,13 @@ Required packages: ecdsa>=0.18.0, cryptography>=41.0.0
 
 import os
 import secrets
+import time
 
 import requests
+
+# Cache: {model: (server_pub_hex, expires_at)}
+_PUBKEY_CACHE: dict = {}
+_PUBKEY_TTL = 3600  # 1 hour
 
 try:
     from ecdsa import SECP256k1, SigningKey
@@ -68,7 +73,7 @@ def generate_keypair():
 def fetch_server_pubkey(base_url, model, api_key, timeout=30):
     """
     Call GET /tee/attestation and return the model's TEE public key after
-    verifying the attestation response.
+    verifying the attestation response. Result is cached 1 hour per model.
 
     Checks (all abort the request on failure):
       - Nonce in response matches the nonce sent.
@@ -76,6 +81,10 @@ def fetch_server_pubkey(base_url, model, api_key, timeout=30):
 
     Returns the 130-char hex uncompressed public key.
     """
+    cached = _PUBKEY_CACHE.get(model)
+    if cached and time.monotonic() < cached[1]:
+        return cached[0]
+
     nonce = secrets.token_hex(32)  # 64 hex chars = 32 bytes
     url = f"{base_url}/tee/attestation"
     headers = {"Authorization": f"Bearer {api_key}"}
@@ -119,6 +128,7 @@ def fetch_server_pubkey(base_url, model, api_key, timeout=30):
             f"E2EE attestation returned unexpected signing_key: {key_hex!r}\n"
             f"Full response: {data}"
         )
+    _PUBKEY_CACHE[model] = (key_hex, time.monotonic() + _PUBKEY_TTL)
     return key_hex
 
 
