@@ -142,9 +142,23 @@ class VeniceClient:
         response = self.request("GET", endpoint, params=params)
         return response.json()
 
+    def get_json_public(self, endpoint: str, params: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
+        """GET request without Authorization header — for public endpoints."""
+        if self._dry_run:
+            return DummyResponse().json()
+        url = VENICEAI_BASE_URL + endpoint
+        try:
+            response = self._session.get(url, params=params, timeout=30)
+            response.raise_for_status()
+        except requests.HTTPError as exc:
+            raise VeniceAPIError(f"Venice public request failed ({endpoint}): {exc}") from exc
+        except requests.RequestException as exc:
+            raise VeniceAPIError(f"{self._friendly_network_hint()} Details: {exc}") from exc
+        return response.json()
+
     def list_models(self, model_type: Optional[str] = None) -> Dict[str, Any]:
         params = {"type": model_type} if model_type else None
-        return self.get_json(API_ENDPOINTS["list_models"], params=params)
+        return self.get_json_public(API_ENDPOINTS["list_models"], params=params)
 
     def list_styles(self) -> Dict[str, Any]:
         return self.get_json(API_ENDPOINTS["list_styles"])
